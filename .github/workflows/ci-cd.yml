@@ -25,8 +25,13 @@ jobs:
       - name: Build Docker image
         run: docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
 
-      - name: Run Unit Tests
-        run: docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} pytest -q
+      - name: Run Unit Tests (in separate container)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            python:3.12-slim \
+            bash -c "pip install --no-cache-dir -r requirements.txt pytest && pytest -q"
 
       - name: Security Scan (Trivy)
         uses: aquasecurity/trivy-action@0.24.0
