@@ -29,41 +29,46 @@ jobs:
       - name: Build Docker image
         run: docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
 
-      - name: Run Unit Tests (in separate container)
+      - name: Run Unit Tests
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/app \
             -w /app \
             python:3.12-slim \
-            bash -c "pip install --no-cache-dir -r requirements.txt pytest && PYTHONPATH=. pytest -q --junitxml=test-results.xml"
+            bash -c "pip install --no-cache-dir -r requirements.txt pytest && PYTHONPATH=. pytest -q --junitxml=report.xml"
 
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v4
+      - name: SonarCloud Scan (SAST)
+        uses: SonarSource/sonarcloud-github-action@master
         with:
-          name: test-results
-          path: test-results.xml
+          args: >
+            -Dsonar.organization=asfar-wpbrigade
+            -Dsonar.projectKey=asfar-wpbrigade_docker-ci-demo
+            -Dsonar.projectName=docker-ci-demo
+            -Dsonar.projectVersion=1.0
+            -Dsonar.sources=.
+            -Dsonar.python.version=3.12
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Security Scan (Trivy)
+      - name: Dependency Scan (Trivy)
         uses: aquasecurity/trivy-action@0.24.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: 1
 
-      - name: Push image with staging tag
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: report.xml
+
+      - name: Push to Staging
         run: |
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
-
-      - name: Save built Docker image tarball (optional)
-        run: docker save ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} -o app-image.tar
-
-      - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image
-          path: app-image.tar
 
   promote_to_prod:
     needs: build_test_scan
@@ -79,7 +84,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tag & push prod image
+      - name: Promote to Prod
         run: |
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging \
