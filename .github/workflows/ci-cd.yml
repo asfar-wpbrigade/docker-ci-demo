@@ -54,7 +54,7 @@ jobs:
     needs: build_test_scan
     runs-on: ubuntu-latest
     environment:
-      name: production
+      name: production   # 👈 Requires approval (set in repo Settings > Environments > production)
       url: https://github.com/${{ github.repository }}
     steps:
       - name: Log in to GHCR
